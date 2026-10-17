@@ -1,3 +1,10 @@
+# 教程
+1. supabase登录,创建项目,初始化目录下的sql
+2. (可选)关闭邮箱验证
+3. 获取SUPABASE_URL, SUPABASE_ANON_KEY,并替换index.html中对应的配置.
+4. github新建项目.
+5. vercel导入该项目.
+
 # supabase表
 https://supabase.com/dashboard/project/tngxwhsabqpdiimgloqf/editor/17604?schema=publi
 
