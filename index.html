@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supabase 安全待办清单 | RLS权限隔离</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-100 min-h-screen py-10">
+<div class="max-w-xl mx-auto px-4">
+  <h1 class="text-3xl font-bold text-center mb-6 text-slate-800">📋 我的待办清单</h1>
+
+  <!-- 登录注册区域 -->
+  <div id="authPanel" class="bg-white rounded-lg shadow p-5 mb-6">
+    <h2 class="text-lg font-semibold mb-3">登录 / 注册</h2>
+    <div class="space-y-3">
+      <input id="email" type="email" placeholder="输入邮箱" class="w-full border border-slate-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <input id="password" type="password" placeholder="输入密码（至少6位）" class="w-full border border-slate-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <div class="flex gap-3">
+        <button onclick="window.signUp()" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded">注册账号</button>
+        <button onclick="window.signIn()" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded">登录</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 待办主面板（登录后才显示） -->
+  <div id="todoPanel" class="hidden">
+    <div class="bg-white rounded-lg shadow p-4 mb-6 flex justify-between items-center">
+      <span id="userEmail" class="text-slate-700"></span>
+      <button onclick="window.signOut()" class="bg-slate-500 hover:bg-slate-600 text-white px-3 py-1.5 rounded">退出登录</button>
+    </div>
+
+    <!-- 添加待办表单 -->
+    <div class="bg-white rounded-lg shadow p-4 mb-6">
+      <div class="flex gap-2">
+        <input id="todoInput" type="text" placeholder="新增待办事项..."
+          class="flex-1 border border-slate-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400">
+        <button onclick="window.addTodo()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">添加</button>
+      </div>
+    </div>
+
+    <!-- 待办列表 -->
+    <div class="bg-white rounded-lg shadow p-4">
+      <ul id="todoList" class="space-y-3"></ul>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===================== Supabase项目信息 =====================
+const SUPABASE_URL = "https://tngxwhsabqpdiimgloqf.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_69uwgWx5DGWOdZwtjDBT4A_1Czl3jqb";
+// ==============================================================
+
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// 页面初始化，检查登录状态
+window.onload = init;
+
+async function init() {
+  const { data: { user } } = await sb.auth.getUser();
+  renderAuthState(user);
+}
+
+// 渲染登录/未登录界面
+function renderAuthState(user) {
+  if (user) {
+    document.getElementById("authPanel").classList.add("hidden");
+    document.getElementById("todoPanel").classList.remove("hidden");
+    document.getElementById("userEmail").innerText = `👤 ${user.email}`;
+    fetchTodos();
+  } else {
+    document.getElementById("authPanel").classList.remove("hidden");
+    document.getElementById("todoPanel").classList.add("hidden");
+  }
+}
+
+// 注册
+window.signUp = async function() {
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value.trim();
+  const { error } = await sb.auth.signUp({ email, password });
+  if (error) alert(`注册失败：${error.message}`);
+  else alert("注册成功，已自动登录");
+}
+
+// 登录
+window.signIn = async function() {
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value.trim();
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) alert(`登录失败：${error.message}`);
+  else renderAuthState(data.user);
+}
+
+// 登出
+window.signOut = async function() {
+  await sb.auth.signOut();
+  renderAuthState(null);
+}
+
+// 获取当前用户待办
+window.fetchTodos = async function() {
+  const { data, error } = await sb
+    .from("todos")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("读取待办错误：", error);
+    return;
+  }
+  renderTodoList(data);
+}
+
+// 渲染列表
+function renderTodoList(todos) {
+  const ul = document.getElementById("todoList");
+  ul.innerHTML = "";
+  if (todos.length === 0) {
+    ul.innerHTML = `<li class="text-slate-400 text-center py-4">暂无待办，添加你的第一条任务</li>`;
+    return;
+  }
+  todos.forEach(item => {
+    ul.innerHTML += `
+      <li class="flex items-center justify-between border-b pb-2">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" ${item.is_completed ? "checked" : ""}
+            onchange="window.toggleTodo('${item.id}', this.checked)"
+            class="w-4 h-4">
+          <span class="${item.is_completed ? "line-through text-slate-400" : "text-slate-700"}">${item.title}</span>
+        </label>
+        <button onclick="window.deleteTodo('${item.id}')" class="text-red-500 hover:text-red-700">删除</button>
+      </li>
+    `;
+  })
+}
+
+// 切换完成状态
+window.toggleTodo = async function(id, checked) {
+  await sb
+    .from("todos")
+    .update({ is_completed: checked })
+    .eq("id", id);
+  fetchTodos();
+}
+
+// 新增待办
+window.addTodo = async function() {
+  const title = document.getElementById("todoInput").value.trim();
+  if (!title) return;
+  await sb.from("todos").insert([{ title }]);
+  document.getElementById("todoInput").value = "";
+  fetchTodos();
+}
+
+// 删除待办
+window.deleteTodo = async function(id) {
+  await sb.from("todos").delete().eq("id", id);
+  fetchTodos();
+}
+
+// 监听登录状态变化（多标签页同步登录态）
+sb.auth.onAuthStateChange((_event, session) => {
+  renderAuthState(session?.user);
+})
+</script>
+</body>
+</html>
